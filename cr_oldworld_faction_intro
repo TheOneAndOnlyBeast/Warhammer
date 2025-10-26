@@ -1,0 +1,1012 @@
+--CR: Changed it so it will just zoom in to where the faction leader is
+
+local data = {
+	load_order = 0,
+	-- UI to hide when zooming into the map.
+	map_ui = {"campaign_3d_ui", "parchment_overlay", "campaign_flags", "campaign_flags_strength_bars"},
+	-- Any faction in here has its Lord's ID used as a variant key when getting intro data. These are usually factions that have multiple LLs, each requiring a unique intro.
+	factions_using_lord_as_variant_key = {
+		wh_main_vmp_schwartzhafen = true,
+	}
+}
+
+-- Conditions by which a faction can provide a variant key are defined here. You may want to use the presence of a given effect bundle as a reason to have a particular intro to play, for example.
+-- Criteria are executed in priority of first to last: if an earlier getter is satisfied and provides a non-nil variant key, then later getters will not be consulted.
+data.variant_key_getters = {
+	-- In the case of factions with multiple possible lords, the find the current general of the faction's starting army and use their unit subtype as the variant key.
+	function(faction_interface)
+		local variant_key = nil
+		if data.factions_using_lord_as_variant_key[faction_interface:name()] then
+			local mobile_mfs = cm:get_mobile_force_interface_list(faction_interface:military_force_list(), non_standard_army_types);
+			if #mobile_mfs > 1 then
+				script_error(string.format("ERROR: Could not set up faction intro. Faction '%s' was marked as using its lord as a variant key, but has multiple armies on the map. Cannot determine which general to use as the variant key (normally, the only one leading an army is selected).", faction_interface:name()))
+			elseif #mobile_mfs == 0 then
+				script_error(string.format("ERROR: Could not set up faction intro. Faction '%s' was marked as using its lord as a variant key, but has no armies on the map. Cannot determine which general to use as the variant key (normally, the only one leading an army is selected).", faction_interface:name()))
+			else
+				variant_key = mobile_mfs[1]:general_character():character_subtype_key()
+			end
+		end
+		return variant_key
+	end
+}
+
+data.intro_presets = {
+	standard = {
+		how_they_play = true,
+	}
+}
+
+data.cutscene_styles = {
+	zoom_in_and_speak = function(self)
+		local valid, missing_fields = data.validate_data_for_style(self, { "cam_cutscene_start", "advice_line" })
+		if not valid then
+			script_error("ERROR: Not all data required to use the zoom_in_and_speak cutscene style was present on this faciton intro table. Missing fields: " .. missing_fields)
+			return false, missing_fields
+		end
+
+		local new_configurator = function(cutscene)
+            cutscene:set_relative_mode(true)
+            cutscene:action_fade_scene(0, 1, 2)
+            cutscene:action_override_ui_visibility(0, false, data.map_ui)
+            -- Other functions take xydbk coords but this one takes enumerated ones. Need to translate from one to the other.
+            cutscene:action_set_camera_position(0, { self.cam_cutscene_start.x, self.cam_cutscene_start.y, self.cam_cutscene_start.d, self.cam_cutscene_start.b, self.cam_cutscene_start.h })
+            cutscene:action_scroll_camera_to_position(1, 8, true, { self.cam_gameplay_start.x, self.cam_gameplay_start.y, self.cam_gameplay_start.d, self.cam_gameplay_start.b, self.cam_gameplay_start.h })
+            cutscene:action_show_advice(5, self.advice_line)
+            -- Wait for the advisor to finish before proceeding, and then wait 2 seconds to smooth UI transition.
+            cutscene:action(
+                function()
+                    cutscene:wait_for_advisor()
+                end,
+                2
+            );
+            cutscene:action_end_cutscene(0)
+            -- Clear UI on end or on skip.
+            -- The faction intro system already loads up the end-cutscene with other stuff ('How They Play', etc.) before this is called, so we need to prepend the end-cutscene rather than set it outright.
+            cutscene:prepend_end_cutscene(
+                function()
+                    for u = 1, #data.map_ui do
+                        cm:get_campaign_ui_manager():override(data.map_ui[u]):set_allowed(true);
+                    end;
+                end
+            )
+        end
+
+		return new_configurator
+	end
+}
+
+data.validate_data_for_style = function(data, required_fields)
+	local missing_fields_string = ""
+
+	for f = 1, #required_fields do
+		if data[required_fields[f]] == nil then
+			local comma_prefix
+			if #missing_fields_string > 0 then
+				comma_prefix = ", '"
+			else
+				comma_prefix = "'"
+			end
+			missing_fields_string = missing_fields_string .. comma_prefix .. required_fields[f] .. "'"
+
+		end
+	end
+
+	if #missing_fields_string > 0 then
+		return false, missing_fields_string
+	else
+		return true, nil
+	end
+end
+
+data.faction_intros = {
+
+-- --- THIS IS AN EXAMPLE OF THE CUSTSCENE CONFIG OPENED OUT TO BE ABLE TO CUSTOMISE IT
+-- --- USED FOR SPECIFIC TIMINGS AND ADDITIONAL CAMERA MOVEMENTS IF NEEDED 
+
+-- 	wh2_main_def_naggarond = faction_intro_data:new{
+-- 		preset = data.intro_presets.standard,
+-- 		cam_gameplay_start = {
+-- 			x = 66,
+-- 			y = 645,
+-- 			d = 6.965149,
+-- 			b = 0,
+-- 			h = 8.008892,
+-- 		},
+-- 		cutscene_configurator = function(cutscene)
+-- 			cutscene:set_relative_mode(true)
+-- 			cutscene:action_fade_scene(0, 1, 2)
+-- 			cutscene:action_override_ui_visibility(0, false, data.map_ui)
+-- 			cutscene:action_set_camera_position(0, {66, 645, 20.705231, 0.0, 65.031822})
+-- 			cutscene:action_scroll_camera_to_position(1, 8, true, {66, 645, 6.965149, 0.0, 8.008892})
+-- 			cutscene:action_show_advice(6, "wh3_flyby_dummy_KF")
+-- 			cutscene:action_override_ui_visibility(7, true, data.map_ui)
+-- 			cutscene:action_end_cutscene(0)
+-- 		end
+-- 	},
+-- --- END OF EXAMPLE ---
+
+	--------------------
+	------NAGGAROTH-----
+	--------------------
+	wh2_main_def_naggarond = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_malekith_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_def_har_ganeth = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_hellebron_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc17_bst_taurox = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_bst_taurox_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc09_tmb_exiles_of_nehek = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_tmb_khatep_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc16_wef_sisters_of_twilight = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_wef_sisters_of_twilight_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_hef_nagarythe = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_alith_anar_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc20_chs_valkia = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_valkia_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_dwf_the_ancestral_throng = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dwf_grombrindal_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_cst_the_drowned = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cst_cylostra_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc24_ksl_daughters_of_the_forest = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc24_ie_camp_ksl_mother_ostankya_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/ksl/mother_ostankya_intro"
+	},
+
+
+
+	--------------------
+	----CHAOS WASTES----
+	--------------------
+	wh3_dlc20_chs_sigvald = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_sigvald_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc20_chs_kholek = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_kholek_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc25_nur_tamurkhan = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc25_ie_camp_nur_tamurkhan_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/nur/tamurkhan_intro"
+	},
+
+	wh2_main_def_hag_graef = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_malus_darkblade_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_ksl_ursun_revivalists = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_ksl_boris_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_chs_chaos = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_archaon_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_dae_daemon_prince = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dae_daemon_prince_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc25_nur_epidemius = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc25_ie_camp_nur_epidemius_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-------NORSCA-------
+	--------------------
+	wh_dlc08_nor_norsca = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_nor_wulfrik_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_dlc08_nor_wintertooth = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_nor_throgg_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc20_chs_azazel = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_azazel_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc20_chs_festus = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_chs_festus_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_skv_clan_moulder = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_throt_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc25_dwf_malakai = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc25_ie_camp_dwf_malakai_makaisson_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/dwf/malakai_intro"
+	},
+
+	wh3_main_ksl_the_ice_court = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_ksl_katarin_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_ksl_the_great_orthodoxy = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_ksl_kostaltyn_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_chs_shadow_legion = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dae_belakor_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-------EMPIRE-------
+	--------------------
+	wh_main_emp_empire = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0, h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_emp_karl_franz_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh_main_emp_wissenland = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0, h = 10.0,},
+		advice_line = "wh3_dlc25_ie_camp_emp_elspeth_von_draken_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/emp/elspeth_intro"
+	},
+
+	wh2_dlc13_emp_golden_order = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_emp_balthasar_gelt_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_dlc03_bst_beastmen = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_bst_khazrak_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc16_wef_drycha = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_wef_drycha_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_vmp_schwartzhafen = {
+		wh_dlc04_vmp_vlad_con_carstein = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_vmp_vlad_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+		},
+		wh_pro02_vmp_isabella_von_carstein = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_vmp_vlad_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+		},
+	},
+
+	wh2_dlc15_grn_bonerattlaz = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_grn_azhag_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc24_tze_the_deceivers = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc24_ie_camp_tze_the_changeling_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/tze/the_changeling_intro"
+	},
+	
+	
+	--------------------
+	-------ULTHUAN------
+	--------------------
+	wh2_main_hef_eataine = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_tyrion_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_hef_avelorn = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_alarielle_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_sla_seducers_of_slaanesh = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_sla_nkari_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_cst_noctilus = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cst_noctilus_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_hef_yvresse = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_eltharion_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	------BRETONNIA-----
+	--------------------
+	wh_main_brt_bretonnia = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_brt_louen_leoncour_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_brt_carcassonne = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_brt_fay_enchantress_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_vmp_the_barrow_legion = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_vmp_kemmler_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_dlc05_wef_wood_elves = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_wef_orion_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_dlc05_wef_argwylon = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_wef_durthu_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc15_grn_broken_axe = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_grn_grom_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	---BORDER PRINCES---
+	--------------------
+	wh2_main_skv_clan_skryre = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_ikit_claw_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_dwf_karak_izor = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dwf_belegar_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_cst_pirates_of_sartosa = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cst_aranessa_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_ogr_disciples_of_the_maw = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_ogr_skragg_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_dlc05_bst_morghur_herd = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_bst_morghur_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	----THE ISTHMUS-----
+	--------------------
+	wh2_main_lzd_hexoatl = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_mazdamundi_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_def_cult_of_pleasure = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_morathi_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc24_cth_the_celestial_court = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc24_ie_camp_cth_yuan_bo_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/cth/yuan_bo_intro"
+	},
+
+
+	--------------------
+	------BADLANDS------
+	--------------------
+	wh_main_grn_orcs_of_the_bloody_hand = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_grn_wurrzag_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_kho_exiles_of_khorne = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_kho_skarbrand_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc17_bst_malagor = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_bst_malagor_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-------LUSTRIA------
+	--------------------
+	wh2_main_lzd_itza = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_gorok_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_brt_bordeleaux = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_brt_alberic_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc13_emp_the_huntmarshals_expedition = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_emp_wulfhart_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_cst_vampire_coast = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cst_harkon_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_twa03_def_rakarth = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_rakarth_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc12_lzd_cult_of_sotek = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = 142.469177, y = 93.129486,  d = 29.676231, b = 0.0,	h = 64.164238,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_tehenhauin_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_skv_clan_pestilens = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_skrolk_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-------KHEMRI-------
+	--------------------
+	wh2_dlc09_tmb_khemri = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_tmb_settra_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc09_tmb_followers_of_nagash = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_tmb_arkhan_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_vmp_vampire_counts = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_vmp_mannfred_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc14_brt_chevaliers_de_lyonesse = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_brt_repanse_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_emp_cult_of_sigmar = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_emp_volkmar_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	---MANGROVE COAST---
+	--------------------
+	wh2_dlc09_tmb_lybaras = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_tmb_khalida_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_lzd_last_defenders = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_kroqgar_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc17_dwf_thorek_ironbrow = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dwf_thorek_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-----SOUTHLANDS-----
+	--------------------
+	wh2_main_hef_order_of_loremasters = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_teclis_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_tze_oracles_of_tzeentch = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_tze_kairos_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_lzd_tlaqua = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_tiktaqto_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	--SOUTHERN WASTES---
+	--------------------
+	wh2_dlc17_lzd_oxyotl = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_oxyotl_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	----DWARF HOLDS-----
+	--------------------
+	wh_main_dwf_dwarfs = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dwf_thorgrim_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_dwf_karak_kadrin = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_dwf_ungrim_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_skv_clan_mors = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_queek_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_grn_crooked_moon = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_grn_skarsnik_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	-----DARK LANDS-----
+	--------------------
+	wh2_dlc15_hef_imrik = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_hef_imrik_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc09_skv_clan_rictus = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_tretch_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_nur_poxmakers_of_nurgle = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_nur_kugath_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc23_chd_legion_of_azgorh = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc23_ie_camp_chd_drazhoath_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc23_chd_astragoth = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc23_ie_camp_chd_astragoth_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	--------------------
+	---MOURN MOUNTAINS--
+	--------------------
+	wh3_main_ogr_goldtooth = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_ogr_greasus_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh_main_grn_greenskins = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_grn_grimgor_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_main_vmp_caravan_of_blue_roses = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_vmp_ghorst_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	wh3_dlc23_chd_zhatan = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc23_ie_camp_chd_zhatan_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	--NORTHERN CATHAY---
+	--------------------
+	wh3_main_cth_the_northern_provinces = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cth_miao_ying_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh3_dlc20_chs_vilitch = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_woc_vilitch_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_main_skv_clan_eshin = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_skv_snikch_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc11_def_the_blessed_dread = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_def_lokhir_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+
+	--------------------
+	--SOUTHERN CATHAY---
+	--------------------
+	wh3_main_cth_the_western_provinces = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_cth_zhao_ming_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+
+	wh2_dlc13_lzd_spirits_of_the_jungle = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc21_ie_camp_lzd_nakai_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+	
+	--dlc26
+	wh3_dlc26_grn_gorbad_ironclaw = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc26_ie_camp_grn_gorbad_ironclaw_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/grn/gorbad_ironclaw_intro"
+	},
+    wh3_dlc26_kho_arbaal = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc26_ie_camp_kho_arbaal_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak
+	},
+    wh3_dlc26_kho_skulltaker = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc26_ie_camp_kho_skulltaker_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/kho/skulltaker_intro"
+	},
+    wh3_dlc26_ogr_golgfag = faction_intro_data:new{
+		preset = data.intro_presets.standard,
+		cam_cutscene_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y()+5,	d = 20.0, b = 0.0,	h = 65.0,},
+		cam_gameplay_start = {x = cm:get_local_faction(true):faction_leader():display_position_x(), y = cm:get_local_faction(true):faction_leader():display_position_y(),	d = 10.0, b = 0.0,	h = 10.0,},
+		advice_line = "wh3_dlc26_ie_camp_ogr_golgfag_intro_01",
+		cutscene_style = data.cutscene_styles.zoom_in_and_speak,
+		fullscreen_movie = "warhammer3/ogr/golgfag_intro"
+	},
+}
+
+return data
