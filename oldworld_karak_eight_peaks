@@ -1,0 +1,406 @@
+
+--CR: Rewrote a big chunk so it works with 8peaks being multiple regions
+
+--    DB has new effect bundles that incrementally remove/add debuffs/buffs
+
+--    Removed references to the mutinous gits (necksnappers)
+
+--    Tried my best to fix the UI (big glowing icons), which isn't easily moddable
+
+-- list of karak eight peaks faction keys that we can iterate over
+karak_eight_peaks_factions = {
+	"wh_main_dwf_karak_izor",
+	"wh_main_grn_crooked_moon",
+	"wh2_main_skv_clan_mors"
+};
+
+local karak_eight_peaks_x = 752
+local karak_eight_peaks_y = 524
+
+local karak_eight_peaks_regions = {
+    "cr_oldworld_region_karag_nar",
+    "cr_oldworld_region_kvinn_wyr",
+    "cr_oldworld_region_karag_mhonar",
+    "cr_oldworld_region_karag_rhyn",
+    "cr_oldworld_region_karag_lhune",
+    "cr_oldworld_region_karagril",
+    "cr_oldworld_region_karag_yar",
+    "cr_oldworld_region_karag_ziflin",
+}
+
+-- list of karak eight peaks faction keys that we can lookup easily
+karak_eight_peaks_factions_lookup = {};
+for i = 1, #karak_eight_peaks_factions do
+	karak_eight_peaks_factions_lookup[karak_eight_peaks_factions[i]] = true;
+end;
+
+-- list of karak eight peaks faction keys that we can lookup easily
+karak_eight_peaks_regions_lookup = {};
+for i = 1, #karak_eight_peaks_regions do
+	karak_eight_peaks_regions_lookup[karak_eight_peaks_regions[i]] = true;
+end;
+
+
+function is_karak_eight_peaks_owner_faction(faction_name)
+	return not not karak_eight_peaks_factions_lookup[faction_name];
+end;
+
+
+
+function apply_karak_diplomacy()
+	-- No peace for Belegar and Skarsnik
+	cm:force_diplomacy("faction:wh_main_grn_crooked_moon", "faction:wh_main_dwf_karak_izor", "peace", false, false, true);
+end;
+
+local belegar_characters = {
+	-- Belegar Ironhammer [Lord]
+	{forename = "names_name_2147358029", surname = "names_name_2147358036", start_rank = 0, kill_if_AI = false, start_skills = {}},
+	-- King Lunn Ironhammer [Thane]
+	{forename = "names_name_2147358979", surname = "names_name_2147358036", start_rank = 5, kill_if_AI = false, start_skills = {"wh_main_skill_all_all_self_blade_master_starter", "wh_main_skill_all_all_self_devastating_charge", "wh_main_skill_all_all_self_hard_to_hit", "wh_main_skill_all_all_self_deadly_blade"}},
+	-- Throni Ironbrow [Runesmith]
+	{forename = "names_name_2147358988", surname = "names_name_2147358994", start_rank = 5, kill_if_AI = false, start_skills = {"wh2_dlc17_skill_dwf_runesmith_self_rune_of_speed", "wh_main_skill_dwf_runesmith_self_rune_of_wrath_&_ruin", "wh_main_skill_dwf_runesmith_self_rune_of_oath_&_steel", "wh_main_skill_dwf_runesmith_self_damping"}},
+	-- Halkenhaf Stonebeard [Thane]
+	{forename = "names_name_2147358982", surname = "names_name_2147358985", start_rank = 5, kill_if_AI = true, start_skills = {"wh_main_skill_all_all_self_blade_master_starter", "wh_main_skill_all_all_self_devastating_charge", "wh_main_skill_all_all_self_hard_to_hit", "wh_main_skill_all_all_self_deadly_blade"}},
+	-- Dramar Hammerfist [Engineer]
+	{forename = "names_name_2147359003", surname = "names_name_2147359010", start_rank = 5, kill_if_AI = true, start_skills = {"wh2_dlc17_skill_dwf_master_engineer_restock","wh2_main_skill_all_hero_assist_army_increase_mobility", "wh2_main_skill_all_hero_hinder_agent_wound", "wh2_main_skill_all_hero_passive_boost_income"}}
+};
+
+function belegar_start_experience()	
+	local faction = cm:get_faction("wh_main_dwf_karak_izor");
+	
+	if faction then
+		cm:disable_event_feed_events(true, "wh_event_category_traits_ancillaries", "", "");
+		cm:disable_event_feed_events(true, "wh_event_category_character", "", "");
+		
+		local is_human = faction:is_human();
+		local character_list = faction:character_list();
+		
+		for i = 0, character_list:num_items() - 1 do
+			local current_char = character_list:item_at(i);
+			local char_index = find_belegar_character(current_char);
+			
+			if char_index > 0 then
+				local char_lookup_str = cm:char_lookup_str(current_char);
+				
+				if not is_human and belegar_characters[char_index].kill_if_AI then
+					cm:kill_character(char_lookup_str, true);
+				else
+					local family_member_cqi = current_char:family_member():command_queue_index();
+					local rank = belegar_characters[char_index].start_rank;
+					
+					if rank > 0 then
+						cm:add_agent_experience(char_lookup_str, rank, true);
+						
+						cm:callback(
+							function()
+								local skills = belegar_characters[char_index].start_skills;
+								local character = cm:get_family_member_by_cqi(family_member_cqi):character();
+								for j = 1, #skills do
+									cm:add_skill(character, skills[j], true, false);
+								end;
+							end,
+							0.2
+						);
+					end;
+				end;
+			end;
+		end;
+		
+		cm:callback(
+			function()
+				cm:disable_event_feed_events(false, "wh_event_category_traits_ancillaries", "", "");
+				cm:disable_event_feed_events(false, "wh_event_category_character", "", "");
+			end,
+			1
+		);
+	end;
+end;
+
+function find_belegar_character(character)
+	for i = 1, #belegar_characters do
+		if character:get_forename() == belegar_characters[i].forename and character:get_surname() == belegar_characters[i].surname then
+			return i;
+		end;
+	end;
+	
+	return 0;
+end;
+
+function eight_peaks_setup()
+	local skarsnik = cm:get_faction("wh_main_grn_crooked_moon");
+	local belegar = cm:get_faction("wh_main_dwf_karak_izor");
+	local queek = cm:get_faction("wh2_main_skv_clan_mors");
+	
+	if skarsnik and skarsnik:is_human() then
+		
+		-- Skarsnik has ONE Karak Eight Peaks to start with
+		cm:apply_effect_bundle("cr_karak_eight_peaks_owned_wh_main_grn_crooked_moon_1", "wh_main_grn_crooked_moon", 0);
+		--cm:apply_effect_bundle("wh_dlc06_skarsnik_karak_owned_false", "wh_main_grn_crooked_moon", 0);
+		karak_eight_peak_ui_thing()
+		
+		if not cm:is_multiplayer() then
+			cm:apply_effect_bundle("wh_dlc06_rival_hidden_boost", "wh_main_dwf_karak_izor", 0);
+		end;
+	else
+		cm:apply_effect_bundle("wh_dlc06_skarsnik_anti_trait", "wh_main_grn_crooked_moon", 0);
+	end;
+	
+	if belegar and belegar:is_human() then
+		
+		-- Belegar does NOT own Karak Eight Peaks to start with
+		cm:apply_effect_bundle("cr_karak_eight_peaks_owned_wh_main_dwf_karak_izor_0", "wh_main_dwf_karak_izor", 0);
+		--cm:apply_effect_bundle("wh_dlc06_belegar_karak_owned_false_first", "wh_main_dwf_karak_izor", 0);
+		karak_eight_peak_ui_thing()
+		
+		if not cm:is_multiplayer() then
+			cm:apply_effect_bundle("wh_dlc06_rival_hidden_boost", "wh_main_grn_crooked_moon", 0);
+		end;
+	end;
+	
+	if queek and queek:is_human() then
+		
+		-- Queek does NOT own Karak Eight Peaks to start with
+		cm:apply_effect_bundle("cr_karak_eight_peaks_owned_wh2_main_skv_clan_mors_0", "wh2_main_skv_clan_mors", 0);
+		--cm:apply_effect_bundle("wh2_main_queek_karak_owned_false", "wh2_main_skv_clan_mors", 0);
+		karak_eight_peak_ui_thing()
+	end;
+end;
+
+
+function Add_Karak_Eight_Peaks_Listeners()
+	out("#### Adding Karak Eight Peaks Listeners ####");
+
+	for i = 1, #karak_eight_peaks_factions do
+		cm:add_faction_turn_start_listener_by_name(
+			"karak_faction_turn_start",
+			karak_eight_peaks_factions[i],
+			function()
+				eight_peaks_check();
+			end, 
+			true
+		);
+	end;
+	
+	core:add_listener(
+		"karak_eight_peaks_occupied",
+		"GarrisonOccupiedEvent",
+		function(context)
+			return karak_eight_peaks_regions_lookup[context:garrison_residence():region():name()];
+		end,
+		function(context)
+			eight_peaks_check();
+		end,
+		true
+	);
+
+	core:add_listener(
+		"karak_faction_joins_confederation",
+		"FactionJoinsConfederation",
+		function(context)
+			local faction_name = context:faction():name();
+			local confederation_name = context:confederation():name();
+			
+			return is_karak_eight_peaks_owner_faction(faction_name) or is_karak_eight_peaks_owner_faction(confederation_name);
+		end,
+		function(context)
+			eight_peaks_check();
+		end,
+		true
+	);
+	
+	local karak_icon_marker_added = false;
+	local camera_moving = false;
+
+	core:add_listener(
+		"karak_icon_clicked",
+		"ComponentLClickUp",
+		function(context)
+			return context.string == "glow" and not cm:is_multiplayer() and not cm:model():pending_battle():is_active() and is_karak_eight_peaks_owner_faction(cm:whose_turn_is_it_single():name());
+		end,
+		function()
+			if not camera_moving then
+				local cam_horizontal = 14.768
+				local cam_bearing = 0.0
+				local cam_vert = 20.0
+				local x_coord = karak_eight_peaks_x
+				local y_coord = karak_eight_peaks_y
+				
+				cm:scroll_camera_from_current(false, 3, {x_coord, y_coord-4, cam_horizontal, cam_bearing, cam_vert});
+
+				camera_moving = true;
+
+				cm:callback(function() camera_moving = false end, 3);
+			end;
+			
+			if not karak_icon_marker_added then
+				karak_icon_marker_added = true;
+				
+				cm:add_marker("karak_eight_peaks_marker", "pointer", karak_eight_peaks_x, karak_eight_peaks_y, 4);
+				
+				cm:callback(
+					function()
+						cm:remove_marker("karak_eight_peaks_marker");
+						karak_icon_marker_added = false;
+					end,
+					10
+				);
+			end;
+		end,
+		true
+	);
+end;
+
+
+
+function find_eight_peaks_owner()
+    local owner;
+    for _, region_name in ipairs(karak_eight_peaks_regions) do
+        local region = cm:get_region(region_name)
+        local owner_ = region:owning_faction():name()
+        if owner then
+            if owner ~= owner_ then
+                return nil
+            end
+        else
+            owner = owner_
+        end
+    end
+    
+    return owner
+end
+
+function count_eight_peaks(faction_key)
+    local count = 0;
+    for _, region_name in ipairs(karak_eight_peaks_regions) do
+        local region = cm:get_region(region_name)
+        local owner = region:owning_faction():name()
+        if owner == faction_key then
+            count = count + 1
+        end
+    end
+    
+    return count
+end
+
+
+function eight_peaks_check()
+	out("######## eight_peaks_check() ########");
+	
+	local karak_owner = find_eight_peaks_owner()
+	
+	
+	if is_karak_eight_peaks_owner_faction(karak_owner) then
+        local owner_save_value = cm:get_saved_value("eight_peaks_event_" .. karak_owner);
+        
+		out("\towner_save_value = " .. tostring(owner_save_value));
+		
+		if not owner_save_value then
+			
+			cm:show_message_event_located(
+				karak_owner,
+				"event_feed_strings_text_wh_dlc06_event_feed_string_scripted_event_captured_karak_eight_peaks_title",
+				"event_feed_strings_text_wh_dlc06_event_feed_string_scripted_event_captured_karak_eight_peaks_primary_detail_" .. karak_owner,
+				"event_feed_strings_text_wh_dlc06_event_feed_string_scripted_event_captured_karak_eight_peaks_secondary_detail_" .. karak_owner,
+				karak_eight_peaks_x,
+				karak_eight_peaks_y,
+				true,
+				601
+			);
+			
+			owner_save_value = true;
+			
+			cm:set_saved_value("eight_peaks_event_" .. karak_owner, true);
+		end;
+	end;
+	
+	local belegar_owner = (karak_owner == "wh_main_dwf_karak_izor");
+	local skarsnik_owner = (karak_owner == "wh_main_grn_crooked_moon");
+	local queek_owner = (karak_owner == "wh2_main_skv_clan_mors");
+	out("\tBELEGAR OWNS KARAK EIGHT PEAKS : " .. tostring(belegar_owner));
+	out("\tSKARSNIK OWNS KARAK EIGHT PEAKS : " .. tostring(skarsnik_owner));
+	out("\tQUEEK OWNS KARAK EIGHT PEAKS : " .. tostring(queek_owner));
+	
+	out("\tRemoving effects...");
+	for i = 0, 8 do
+        for _, faction_name in ipairs(karak_eight_peaks_factions) do
+            cm:remove_effect_bundle("cr_karak_eight_peaks_owned_" .. faction_name .. "_" .. tostring(i), faction_name)
+        end
+    end
+    --Remove these just in case
+    cm:remove_effect_bundle("wh_dlc06_belegar_karak_owned_false", "wh_main_dwf_karak_izor");
+	cm:remove_effect_bundle("wh_dlc06_belegar_karak_owned_true", "wh_main_dwf_karak_izor");
+	cm:remove_effect_bundle("wh_dlc06_skarsnik_karak_owned_false", "wh_main_grn_crooked_moon");
+	cm:remove_effect_bundle("wh_dlc06_skarsnik_karak_owned_true", "wh_main_grn_crooked_moon");
+	cm:remove_effect_bundle("wh2_main_queek_karak_owned_false", "wh2_main_skv_clan_mors");
+	cm:remove_effect_bundle("wh2_main_queek_karak_owned_true", "wh2_main_skv_clan_mors");
+	
+	out("\tApplying effects...");
+	for _, faction_name in ipairs(karak_eight_peaks_factions) do
+        local count = count_eight_peaks(faction_name)
+        cm:apply_effect_bundle("cr_karak_eight_peaks_owned_" .. faction_name .. "_" .. tostring(count), faction_name, 0)
+        karak_eight_peak_ui_thing()
+    end
+
+    out("#############################");
+end;
+
+
+--Sets the big eight peaks UI icon visible
+function karak_eight_peak_ui_thing()
+    local faction_name = cm:get_local_faction_name(true) --We are only doing cosmetic UI changes based on this, so it should be safe for mp
+    
+    if karak_eight_peaks_factions_lookup[faction_name] then
+        local is_owned = count_eight_peaks(faction_name) == 8
+
+        local eight_peaks = find_uicomponent("right_spacer_eight_peaks")
+        if eight_peaks then
+            eight_peaks:SetVisible(true)
+            
+            local icon_effect = find_uicomponent(eight_peaks, "icon_effect")
+            local state_string = ""
+            
+            emitter_dwf = find_uicomponent(eight_peaks, "emitter_dwf")
+            if emitter_dwf then
+                emitter_dwf:SetVisible(false)
+            end
+            
+            local emitter;
+            if faction_name == "wh2_main_skv_clan_mors" then
+                emitter = find_uicomponent(eight_peaks, "emitter_skv")
+            
+                if is_owned then
+                    state_string = "wh2_main_queek_karak_owned_true"
+                else
+                    state_string = "wh2_main_queek_karak_owned_false"
+                end
+            elseif faction_name == "wh_main_dwf_karak_izor" then
+                emitter = find_uicomponent(eight_peaks, "emitter_dwf")
+                
+                if is_owned then
+                    state_string = "wh_dlc06_belegar_karak_owned_true"
+                else
+                    state_string = "wh_dlc06_belegar_karak_owned_false"
+                end
+            else
+                emitter = find_uicomponent(eight_peaks, "emitter_grn")
+                
+                if is_owned then
+                    state_string = "wh_dlc06_skarsnik_karak_owned_true"
+                else
+                    state_string = "wh_dlc06_skarsnik_karak_owned_false"
+                end
+            end
+            
+            if emitter then
+                emitter:SetVisible(true)
+                local selected_glow = find_uicomponent(emitter, "selected_glow")
+                if selected_glow then
+                    selected_glow:SetVisible(false)
+                end
+            end
+            if icon_effect then
+                icon_effect:SetState(state_string)
+            end
+        end
+    end
+end
