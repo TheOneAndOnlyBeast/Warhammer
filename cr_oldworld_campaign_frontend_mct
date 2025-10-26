@@ -1,0 +1,126 @@
+-- MCT, stuff
+
+local function do_the_mct_thing(campaign_key)
+    -- MCT
+    local mct = core:get_static_object("mod_configuration_tool")
+    if mct then
+        local my_settings = mct:get_mod_by_key("cr_oldworld_campaign")
+        
+        my_settings:clear_userdata()
+            
+        my_settings:set_userdata({
+            mmf = mixer_major_factions
+        })
+        
+        -- Elftown
+        if (campaign_key == "cr_oldworld") or (campaign_key == "cr_oldworldclassic") then
+            local elftown_setting = my_settings:get_option_by_key("elftown_dropdown")
+            mixer_factions_that_require_other_mods["195085320"] = "cr_hef_continental_exarchate"
+            mixer_factions_that_require_other_mods["251413150"] = "wh2_main_hef_eataine"
+            mixer_factions_that_require_other_mods["411816039"] = "wh2_main_hef_avelorn"
+            mixer_enabled_custom_factions["cr_hef_continental_exarchate"] = nil
+            mixer_enabled_custom_factions["wh2_main_hef_eataine"] = nil
+            mixer_enabled_custom_factions["wh2_main_hef_avelorn"] = nil
+            
+            if elftown_setting:get_finalized_setting() == "exarchate" then
+                mixer_enable_custom_faction("195085320")
+            elseif elftown_setting:get_finalized_setting() == "tyrion" then
+                mixer_enable_custom_faction("251413150")
+            elseif elftown_setting:get_finalized_setting() == "alarielle" then
+                mixer_enable_custom_faction("411816039")
+            end
+        end
+                            
+        -- Nagronath
+        if (campaign_key == "cr_oldworld") or (campaign_key == "cr_oldworldclassic") then
+            local nagronath_setting = my_settings:get_option_by_key("nagronath_dropdown")
+            mixer_factions_that_require_other_mods["254699743"] = "wh2_main_def_har_ganeth"
+            mixer_factions_that_require_other_mods["760477883"] = "wh2_main_def_naggarond"
+            mixer_factions_that_require_other_mods["1411088549"] = "wh2_main_def_cult_of_pleasure"
+            mixer_enabled_custom_factions["wh2_main_def_har_ganeth"] = nil
+            mixer_enabled_custom_factions["wh2_main_def_naggarond"] = nil
+            mixer_enabled_custom_factions["wh2_main_def_cult_of_pleasure"] = nil
+            
+            if nagronath_setting:get_finalized_setting() == "hellebron" then
+                mixer_enable_custom_faction("254699743")
+            elseif nagronath_setting:get_finalized_setting() == "malekith" then
+                mixer_enable_custom_faction("760477883")
+            elseif nagronath_setting:get_finalized_setting() == "morathi" then
+                mixer_enable_custom_faction("1411088549")
+            end
+        end
+        
+        
+        -- Konquata
+        if (campaign_key == "cr_oldworld") or (campaign_key == "cr_oldworldclassic") then
+            local konquata_setting = my_settings:get_option_by_key("konquata_dropdown")
+            mixer_factions_that_require_other_mods["585164763"] = "wh2_main_lzd_last_defenders"
+            mixer_factions_that_require_other_mods["152228802"] = "wh2_main_lzd_hexoatl"
+            mixer_factions_that_require_other_mods["1282195578"] = "wh2_main_lzd_tlaqua"
+            mixer_factions_that_require_other_mods["919597541"] = "wh2_main_lzd_itza"
+            mixer_enabled_custom_factions["wh2_main_lzd_last_defenders"] = nil
+            mixer_enabled_custom_factions["wh2_main_lzd_hexoatl"] = nil
+            mixer_enabled_custom_factions["wh2_main_lzd_tlaqua"] = nil
+            mixer_enabled_custom_factions["wh2_main_lzd_itza"] = nil
+            
+            if konquata_setting:get_finalized_setting() == "kroq_gar" then
+                mixer_enable_custom_faction("585164763")
+            elseif konquata_setting:get_finalized_setting() == "mazdamundi" then
+                mixer_enable_custom_faction("152228802")
+            elseif konquata_setting:get_finalized_setting() == "tiktaqto" then
+                mixer_enable_custom_faction("1282195578")
+            elseif konquata_setting:get_finalized_setting() == "gor_rok" then
+                mixer_enable_custom_faction("919597541")
+            end
+        end
+        
+        -- Kharakorsi (not in cr_oldworldclassic)
+        if (campaign_key == "cr_oldworld") then
+            local kharakorsi_setting = my_settings:get_option_by_key("kharakorsi_dropdown")
+            mixer_factions_that_require_other_mods["302638618"] = "wh3_main_cth_the_western_provinces"
+            mixer_factions_that_require_other_mods["832406448"] = "wh3_main_cth_the_northern_provinces"
+            mixer_enabled_custom_factions["wh3_main_cth_the_western_provinces"] = nil
+            mixer_enabled_custom_factions["wh3_main_cth_the_northern_provinces"] = nil
+
+            if kharakorsi_setting:get_finalized_setting() == "zhao" then
+                mixer_enable_custom_faction("302638618")
+            elseif kharakorsi_setting:get_finalized_setting() == "miao" then
+                mixer_enable_custom_faction("832406448")
+            end
+        end
+    end     
+end
+
+core:add_ui_created_callback(
+	function(context) 
+        --Should occur anytime you enter the singleplayer campaign setup screen, or a multiplayer lobby
+		core:add_listener(
+			"cr_oldworld_frontend_mct_singleplayer",
+			"ScriptEventTOWFrontendFactionsEnabledDisabled",
+			function(context)
+				return true;
+			end,
+			function(context)
+                --ModLog("doing the mct thing")
+                do_the_mct_thing(context:campaign_key())
+                mixer_svr_stuff()
+            end,
+			true
+		)
+		
+		--And then anytime the mct options are tweaked
+		--[[core:add_listener(
+			"cr_oldworld_frontend_mct_option_select",
+			"MctOptionSettingFinalized", --"MctOptionSelectedSettingSet",
+			function(context)
+				return true;
+			end,
+			function(context)
+                --ModLog("doing the mct thing, mct")
+                do_the_mct_thing(context:campaign_key)
+            end,
+			true
+		)]]--
+		-- okay maybe not, that complicates things a lot since we'd need to find the campaign_key from here...
+	end
+)
