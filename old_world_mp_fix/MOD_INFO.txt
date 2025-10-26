@@ -1,0 +1,112 @@
+===============================================
+OLD WORLD MP-FIX - MOD METADATA
+===============================================
+
+Bruk denne informasjonen når du setter opp modden i RPFM eller Steam Workshop.
+
+---
+MOD NAME:
+---
+Old World MP-Fix
+
+---
+SHORT DESCRIPTION:
+---
+Fixes multiplayer desync issues in The Old World Campaign mods
+
+---
+FULL DESCRIPTION (for Steam Workshop):
+---
+# Old World MP-Fix
+
+Fixes multiplayer desync issues in **The Old World Campaign** and **Old World Classic** mods.
+
+## Problem
+The Old World endgame scripts use non-deterministic `pairs()` iteration, causing different execution order on two clients. This leads to desync around turn 20-30 when endgames trigger.
+
+## Solution
+Replaces 4 endgame script files with MP-safe versions using sorted iteration, ensuring identical execution order on all clients.
+
+## Installation
+1. Subscribe to this mod
+2. In Mod Manager, ensure load order:
+   - The Old World Campaign (top)
+   - Old World MP-Fix (below it)
+3. Start NEW campaign
+
+## Compatibility
+✅ The Old World Campaign
+✅ Old World Classic submod
+✅ SFO: Grimhammer III
+✅ Other mods (unless they also override endgame scripts)
+
+## What Changes?
+- Army spawn order (now alphabetic instead of random)
+- Mission objective order (now sorted)
+
+## What Does NOT Change?
+- Balance (same army counts and strength)
+- Which factions spawn
+- Victory conditions
+- Gameplay mechanics
+
+## Multiplayer Requirements
+🎮 BOTH players need this mod
+🎮 Identical load order
+🎮 Start NEW campaign (old saves may have divergence)
+
+## Technical Details
+Fixed files:
+- endgame_wild_hunt.lua (1 pairs() → sorted)
+- endgame_grudge_too_far.lua (1 pairs() → sorted)
+- endgame_vampires_rise.lua (1 pairs() → sorted)
+- endgame_vermintide.lua (3 pairs() → sorted)
+
+Total: 6 non-deterministic iterations replaced with sorted iteration.
+
+---
+TAGS (for Steam Workshop):
+---
+- Gameplay
+- Multiplayer
+- Bug Fix
+- Campaign
+
+---
+AUTHOR:
+---
+[Your name here]
+
+---
+VERSION:
+---
+1.0
+
+---
+REQUIRED MODS:
+---
+The Old World Campaign (any version)
+
+---
+INCOMPATIBLE MODS:
+---
+Any other mod that overrides these files:
+- script/campaign/cr_oldworld/endgame/endgame_wild_hunt.lua
+- script/campaign/cr_oldworld/endgame/endgame_grudge_too_far.lua
+- script/campaign/cr_oldworld/endgame/endgame_vampires_rise.lua
+- script/campaign/cr_oldworld/endgame/endgame_vermintide.lua
+
+---
+LOAD ORDER:
+---
+MUST load AFTER "The Old World Campaign"
+
+---
+CHANGELOG:
+---
+v1.0 (Initial Release)
+- Fixed 6 non-deterministic pairs() iterations in endgame scripts
+- Ensures multiplayer desync-free endgame triggers
+- No gameplay changes, only iteration order
+
+===============================================
