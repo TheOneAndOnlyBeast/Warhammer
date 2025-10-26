@@ -1,0 +1,299 @@
+require("script/frontend/tow/cr_oldworld_campaign_helpers")
+
+--This does a couple things:
+-- Resizes the map shown for lord selection (just making it square. fun fact: even vanilla IE's minimap isn't the right aspect ratio!)
+-- Hides vanilla IE button for campaign selection (both menus)
+-- Adds a "Modded" banner for the Old World campaign
+-- Hides the Old World campaign from multiplayer campaign selection (second listener)
+-- Changes the multiplayer IE campaign's name and description to Old World's
+
+
+local vanilla_ie_campaign_name = "wh3_main_combi"
+local vanilla_ie_playable_area_id = "1363800561"
+
+
+core:add_ui_created_callback(
+	function(context)
+	
+        --UI map aspect ratio tweak, has to be done when the map is opened since it gets reset
+		core:add_listener(
+			"cr_oldworld_frontend_sp_map_tweak",
+			"ComponentLClickUp",
+			function(context)
+				return context.string == "tab_button_map"
+			end,
+			function(context)
+                --Adjust map size
+				local map = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_lord", "lord_details_panel", "lord_info", "tab_map", "map")
+				if map then
+                    if tow_campaigns[string.sub(map:GetContextObjectId("CcoCampaignStartInfo"), 1, -6)] then
+                        map:SetCanResizeWidth(true)
+                        map:SetCanResizeHeight(true)
+                        map:Resize(680, 680, true)
+                        map:SetCanResizeWidth(false)
+                        map:SetCanResizeHeight(false)                    
+                    else
+                        map:SetCanResizeWidth(true)
+                        map:SetCanResizeHeight(true)
+                        map:Resize(1064, 763, true)
+                        map:SetCanResizeWidth(false)
+                        map:SetCanResizeHeight(false)
+                    end
+                end
+				end,
+			true
+		)
+		
+		
+		--When setting-up a singleplayer campaign...
+		core:add_listener(
+			"cr_oldworld_frontend_lord_select_sp",
+			"ComponentLClickUp",
+			function(context)
+				return tow_playable_area_ids[string.sub(context.string, 33)]
+			end,
+			function(context)
+			
+                local campaign_key = ""
+                
+                --Get the campaign key from the start button
+                local button_start_campaign = find_uicomponent(core:get_ui_root(), "campaign_select_new", "button_start_parent", "button_start_campaign")
+                if button_start_campaign then
+                    campaign_key = string.sub(button_start_campaign:GetContextObjectId("CcoCampaignStartInfo"), 1, -6)
+                end
+                
+                --ModLog("Entering campaign set-up, campaign_key: " .. campaign_key)
+                
+                --Enable/Disable factions from frontend
+                for leader_char_id, faction_key in pairs(tow_relevant_factions) do
+                    if tow_factions_to_enable[campaign_key][leader_char_id] then
+                        --Enable
+                        --ModLog("Enabling " ..  faction_key .. " " .. leader_char_id)
+                        mixer_enable_custom_faction(leader_char_id)
+                    else
+                        --Disable
+                        --ModLog("Disabling " ..  faction_key .. " " .. leader_char_id)
+                        mixer_factions_that_require_other_mods[leader_char_id] = faction_key
+                        mixer_enabled_custom_factions[faction_key] = nil
+                    end
+                end
+                common.set_context_value("mixer_factions_that_require_other_mods", mixer_factions_that_require_other_mods)
+                core:trigger_custom_event("ScriptEventTOWFrontendFactionsEnabledDisabled",{campaign_key = campaign_key})
+                
+                --Endgame Settings
+				local settings = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_settings", "settings_holder", "settings_holder", "listview", "list_clip", "list_box")
+				if settings then
+                    local campaign_header = find_uicomponent(settings, "campaign_header")
+                    if campaign_header then
+                        campaign_header:SetVisible(true)
+                    end
+                    
+                    local campaign_settings = find_uicomponent(settings, "campaign_settings")
+                    if campaign_settings then
+                        campaign_settings:SetVisible(true)
+                        
+                        local sea_lanes = find_uicomponent(campaign_settings, "sea_lanes_on")
+                        if sea_lanes then
+                            sea_lanes:SetVisible(true)
+                        end
+                        
+                        local ai_minor_faction_potential = find_uicomponent(campaign_settings, "ai_minor_faction_potential")
+                        if ai_minor_faction_potential then
+                            ai_minor_faction_potential:SetVisible(true)
+                        end
+                        
+                        local ai_extra_aggro = find_uicomponent(campaign_settings, "ai_extra_aggro")
+                        if ai_extra_aggro then
+                            ai_extra_aggro:SetVisible(true)
+                        end
+                        
+                        local shared_state_setting_holder = find_uicomponent(campaign_settings, "shared_state_setting_holder")
+                        if shared_state_setting_holder then
+                            shared_state_setting_holder:SetVisible(true)
+                            
+                            local shared_state = find_uicomponent(shared_state_setting_holder, "shared_state_settings")
+                            if shared_state then
+                            
+                                for endgame_string, is_active in pairs(tow_endgames[campaign_key]) do
+                                    --hide endgame if needed
+                                    local endgame = find_uicomponent(shared_state, endgame_string)
+                                    if endgame then
+                                        endgame:SetVisible(is_active)
+                                    end
+                                end
+                                
+                            end
+                            
+                        end
+                        
+                    end
+                    
+				end
+				
+			end,
+			true
+        )
+	
+        --Modify the UI on the singleplayer campaign select screens (there's two of them)
+		core:add_listener(
+			"cr_oldworld_frontend_campaign_select_sp",
+			"FrontendScreenTransition",
+			function(context)
+				return context.string == "campaign_select_new"
+			end,
+			function(context)
+			
+				--The main campaign list
+				local campaign_list = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_campaign", "campaign_holder", "campaign_button_holder", "list_parent")
+				if campaign_list then
+                    for i = 0, campaign_list:ChildCount() - 1 do
+                        local campaign_selection = UIComponent(campaign_list:Find(i))
+                        
+                        if string.find(campaign_selection:Id(), vanilla_ie_playable_area_id) then
+                            -- hide vanilla IE because it will just launch Old World, it's confusing, and I don't want to deal with """bug reports""" when people try to use a vanilla IE start_pos mod
+                            campaign_selection:SetVisible(false)
+                        end
+                        
+                        
+                        if tow_playable_area_ids[string.sub(campaign_selection:Id(), 33)] then
+                            --Fancy banner
+                            local beta_tag = find_uicomponent(campaign_selection, "button_campaign_entry", "beta_tag")
+                            if beta_tag then
+                                beta_tag:SetVisible(true)
+                                beta_tag:SetTooltipText(common.get_localised_string("campaign_localised_strings_string_modded_beta_label_tooltip"), true)
+                            end
+                            
+                            local beta_label = find_uicomponent(beta_tag, "beta_label")
+                            if beta_label then
+                                beta_label:SetText("MODDED")
+                            end
+                            
+                            local round_extra_small_button = find_uicomponent(beta_tag, "round_extra_small_button")
+                            if round_extra_small_button then
+                                round_extra_small_button:SetVisible(false)
+                            end
+                        end
+                    end
+                end
+                
+                
+                --The list on the other menu with the smaller buttons
+                local campaign_list2 = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_campaign", "campaign_selected_screen", "campaign_holder", "campaign_list_holder", "campaign_list")
+                if campaign_list2 then
+                    for j = 0, campaign_list2:ChildCount() - 1 do
+                        local campaign_selection2 = UIComponent(campaign_list2:Find(j))
+                        
+                        if string.find(campaign_selection2:Id(), vanilla_ie_playable_area_id) then
+                            -- hide vanilla IE here too
+                            campaign_selection2:SetVisible(false)
+                        end
+                    end
+                end
+			end,
+			true
+		)
+        
+        --Multiplayer, in a lobby
+        core:add_listener(
+			"cr_oldworld_frontend_mp_grand_campaign",
+			"FrontendScreenTransition",
+			function(context)
+			
+				return context.string == "mp_grand_campaign"
+			end,
+			function(context)
+                local campaign_name = ""
+                local campaign_key = "wh3_main_combi"
+                
+                --Infer the campaign from this bit of text, seems to be no better way to do it
+                timer_manager:callback(
+                    function()
+                        local mp_grand_campaign = find_uicomponent("mp_grand_campaign");
+                        campaign_name = common.get_context_value("FrontendRoot.CampaignLobbyContext.CampaignStartInfoContext.Name")
+                
+                        for playable_area_id, c_k in pairs(tow_playable_area_ids_to_campaigns) do
+                            if (common.get_localised_string("campaign_map_playable_areas_onscreen_name_" .. playable_area_id) == campaign_name) then
+                                campaign_key = c_k
+                                --ModLog("hosted campaign must be " .. campaign_key)
+                            end
+                        end
+                        
+                    
+                        for leader_char_id, faction_key in pairs(tow_relevant_factions) do
+                            if tow_factions_to_enable[campaign_key][leader_char_id] then
+                                --Enable
+                                --ModLog("Enabling " ..  faction_key .. " " .. leader_char_id)
+                                mixer_enable_custom_faction(leader_char_id)
+                            else
+                                --Disable
+                                --ModLog("Disabling " ..  faction_key .. " " .. leader_char_id)
+                                mixer_factions_that_require_other_mods[leader_char_id] = faction_key
+                                mixer_enabled_custom_factions[faction_key] = nil
+                            end
+                        end
+                        common.set_context_value("mixer_factions_that_require_other_mods", mixer_factions_that_require_other_mods)
+                        core:trigger_custom_event("ScriptEventTOWFrontendFactionsEnabledDisabled",{campaign_key = campaign_key})
+                    
+                    end,
+                    5000
+                )
+			end,
+			true
+        )
+        
+        
+        
+        --Multiplayer, campaign select screen
+		core:add_listener(
+			"cr_oldworld_frontend_mp",
+			"FrontendScreenTransition",
+			function(context)
+				return context.string == "mp_campaign_host"
+			end,
+			function(context)
+				
+				local campaign_list = find_uicomponent(core:get_ui_root(), "mp_campaign_host", "body", "campaigns_list")
+
+                if campaign_list then
+                    for k = 0, campaign_list:ChildCount() - 1 do
+                        local campaign_selection = UIComponent(campaign_list:Find(k))
+                        
+                        if campaign_selection then
+                            if tow_campaigns[campaign_selection:Id()] then
+                                -- Hide Old World campaigns because they don't actually work
+                                campaign_selection:SetVisible(false)
+                            end
+                            
+                            if campaign_selection:Id() == vanilla_ie_campaign_name then
+                            
+                                --Change name (maybe not necessary since I've changed the IE playable area .loc stuff)
+                                local button_txt = find_uicomponent(campaign_selection, "button", "button_txt")
+                                if button_txt then
+                                    button_txt:SetText(common.get_localised_string("campaign_map_playable_areas_onscreen_name_225455108"))
+                                end
+                                
+                                --Fancy banner
+                                local beta_tag = find_uicomponent(campaign_selection, "button", "beta_tag")
+                                if beta_tag then
+                                    beta_tag:SetVisible(true)
+                                    beta_tag:SetTooltipText(common.get_localised_string("campaign_localised_strings_string_modded_beta_label_tooltip"), true)
+                                end
+                                
+                                local beta_label = find_uicomponent(beta_tag, "beta_label")
+                                if beta_label then
+                                    beta_label:SetText("MODDED")
+                                end
+                                
+                                local round_extra_small_button = find_uicomponent(beta_tag, "round_extra_small_button")
+                                if round_extra_small_button then
+                                    round_extra_small_button:SetVisible(false)
+                                end
+                            end
+                        end
+                    end
+                end
+			end,
+			true
+		)
+	end
+)
