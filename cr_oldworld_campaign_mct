@@ -1,0 +1,58 @@
+local mct = get_mct()
+local mct_mod = mct:register_mod("cr_oldworld_campaign")
+
+mct_mod:set_title("mct_cr_oldworld_campaign_title", true)
+mct_mod:set_author("mct_cr_oldworld_campaign_author", true)
+mct_mod:set_description("mct_cr_oldworld_campaign_description", true)
+
+-- "Turn Time Destroyer"
+local toggle_kill_minor_factions_section = mct_mod:add_new_section("toggle_kill_minor_factions")
+toggle_kill_minor_factions_section:set_localised_text("{{tr:mct_cr_oldworld_campaign_toggle_kill_minor_factions_text}}")
+
+local kill_minor_factions_option = mct_mod:add_new_option("kill_minor_factions_checkbox", "checkbox")
+kill_minor_factions_option:set_default_value(false)
+
+local kill_percent_option = mct_mod:add_new_option("kill_percent_slider", "slider")
+kill_percent_option:slider_set_min_max(0, 100)
+kill_percent_option:slider_set_step_size(5)
+kill_percent_option:set_default_value(75)
+
+-- Toggle Vanilla Factions
+local toggle_vanilla_factions_section = mct_mod:add_new_section("toggle_vanilla_factions")
+toggle_vanilla_factions_section:set_localised_text("{{tr:mct_cr_oldworld_campaign_toggle_vanilla_factions_text}}")
+
+-- Pick which Hef LL starts at Elftown
+local elftown_option = mct_mod:add_new_option("elftown_dropdown", "dropdown")
+elftown_option:add_dropdown_value("exarchate", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_exarchate_text}}", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_exarchate_tooltip}}", true)
+elftown_option:add_dropdown_value("tyrion", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_tyrion_text}}", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_tyrion_tooltip}}", false)
+elftown_option:add_dropdown_value("alarielle", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_alarielle_text}}", "{{tr:mct_cr_oldworld_campaign_elftown_dropdown_alarielle_tooltip}}", false)
+elftown_option:set_default_value("exarchate")
+elftown_option:set_text("mct_cr_oldworld_campaign_elftown_dropdown_text", true)
+elftown_option:set_tooltip_text("mct_cr_oldworld_campaign_elftown_dropdown_tooltip", true)
+
+-- Pick which Def LL starts at Nagronath
+local nagronath_option = mct_mod:add_new_option("nagronath_dropdown", "dropdown")
+nagronath_option:add_dropdown_value("hellebron", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_hellebron_text}}", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_hellebron_tooltip}}", true)
+nagronath_option:add_dropdown_value("malekith", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_malekith_text}}", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_malekith_tooltip}}", false)
+nagronath_option:add_dropdown_value("morathi", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_morathi_text}}", "{{tr:mct_cr_oldworld_campaign_nagronath_dropdown_morathi_tooltip}}", false)
+nagronath_option:set_default_value("hellebron")
+nagronath_option:set_text("mct_cr_oldworld_campaign_nagronath_dropdown_text", true)
+nagronath_option:set_tooltip_text("mct_cr_oldworld_campaign_nagronath_dropdown_tooltip", true)
+
+-- Pick which Lzd LL starts at Konquata
+local konquata_option = mct_mod:add_new_option("konquata_dropdown", "dropdown")
+konquata_option:add_dropdown_value("kroq_gar", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_kroq_gar_text}}", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_kroq_gar_tooltip}}", true)
+konquata_option:add_dropdown_value("mazdamundi", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_mazdamundi_text}}", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_mazdamundi_tooltip}}", false)
+konquata_option:add_dropdown_value("tiktaqto", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_tiktaqto_text}}", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_tiktaqto_tooltip}}", false)
+konquata_option:add_dropdown_value("gor_rok", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_gor_rok_text}}", "{{tr:mct_cr_oldworld_campaign_konquata_dropdown_gor_rok_tooltip}}", false)
+konquata_option:set_default_value("kroq_gar")
+konquata_option:set_text("mct_cr_oldworld_campaign_konquata_dropdown_text", true)
+konquata_option:set_tooltip_text("mct_cr_oldworld_campaign_konquata_dropdown_tooltip", true)
+
+-- Pick which Cth LL starts at Kharakorsi
+local kharakorsi_option = mct_mod:add_new_option("kharakorsi_dropdown", "dropdown")
+kharakorsi_option:add_dropdown_value("zhao", "{{tr:mct_cr_oldworld_campaign_kharakorsi_dropdown_zhao_text}}", "{{tr:mct_cr_oldworld_campaign_kharakorsi_dropdown_zhao_tooltip}}", true)
+kharakorsi_option:add_dropdown_value("miao", "{{tr:mct_cr_oldworld_campaign_kharakorsi_dropdown_miao_text}}", "{{tr:mct_cr_oldworld_campaign_kharakorsi_dropdown_miao_tooltip}}", false)
+kharakorsi_option:set_default_value("zhao")
+kharakorsi_option:set_text("mct_cr_oldworld_campaign_kharakorsi_dropdown_text", true)
+kharakorsi_option:set_tooltip_text("mct_cr_oldworld_campaign_kharakorsi_dropdown_tooltip", true)
