@@ -5,6 +5,12 @@ src/vehicles.ini
 # Generated output
 output/merged.ini
 
+# Backups created by tools
+backups/
+
+# Example/demo files
+example_project.json
+
 # User's custom config (they should create their own)
 user.cfg
 
