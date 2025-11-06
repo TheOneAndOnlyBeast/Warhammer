@@ -1,0 +1,26 @@
+# Extracted game files - don't commit these
+src/global.ini
+src/vehicles.ini
+
+# Generated output
+output/merged.ini
+
+# User's custom config (they should create their own)
+user.cfg
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# PowerShell
+*.ps1~
+
+# Temporary files
+*.tmp
+*.bak
+*~
